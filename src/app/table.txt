@@ -1,0 +1,32 @@
+import mongoose, { Schema, Document, Model } from "mongoose";
+
+export type TableStatus = "Available" | "In Use" | "Maintenance";
+
+export interface ITable extends Document {
+  name: string;
+  status: TableStatus;
+  note?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  sessionStartedAt: Date; // For tracking when a session starts
+  totalMinutes: number; // Total minutes used
+}
+
+const TableSchema = new Schema<ITable>(
+  {
+    name: { type: String, required: true, trim: true },
+    status: {
+      type: String,
+      enum: ["Available", "In Use", "Maintenance"],
+      default: "Available",
+    },sessionStartedAt: { type: Date }, // For tracking when a session starts
+    totalMinutes: { type: Number, default: 0 }, // Total minutes used
+    note: { type: String, default: "" },
+  },
+  { timestamps: true }
+);
+
+const Table: Model<ITable> =
+  mongoose.models.Table || mongoose.model<ITable>("Tables", TableSchema);
+
+export default Table;

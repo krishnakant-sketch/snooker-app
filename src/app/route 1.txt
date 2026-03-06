@@ -1,0 +1,145 @@
+// src/app/api/tables/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
+import connectDB from "@/app/Lib/Connectdb";
+import Table from "@/app/Models/Table";
+
+const VALID_STATUSES = ["Available", "In Use", "Maintenance"];
+
+// ✅ Next.js 15+ — params is a Promise
+type RouteContext = { params: Promise<{ id: string }> };
+
+/** Helper: validate MongoDB ObjectId */
+const isValidId = (id: string) => mongoose.Types.ObjectId.isValid(id);
+
+/**
+ * GET /api/tables/:id
+ * Returns a single table by ID
+ */
+export async function GET(_req: NextRequest, { params }: RouteContext) {
+  const { id } = await params; // ✅ await params
+
+  if (!isValidId(id)) {
+    return NextResponse.json({ error: "Invalid table ID" }, { status: 400 });
+  }
+
+  try {
+    await connectDB();
+    const table = await Table.findById(id).lean();
+
+    if (!table) {
+      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(table, { status: 200 });
+  } catch (err) {
+    console.error(`[GET /api/tables/${id}]`, err);
+    return NextResponse.json({ error: "Failed to fetch table" }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/tables/:id
+ * Body: { name?: string, status?: TableStatus, note?: string }
+ * Partially updates a table — only provided fields are updated
+ */
+export async function PATCH(req: NextRequest, { params }: RouteContext) {
+  const { id } = await params; // ✅ await params
+
+  if (!isValidId(id)) {
+    return NextResponse.json({ error: "Invalid table ID" }, { status: 400 });
+  }
+
+  try {
+    await connectDB();
+
+    const body = await req.json();
+    const { name, status, note } = body;
+
+    // Build update object — only include fields that were sent
+    const updates: Record<string, string> = {};
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        return NextResponse.json({ error: "Table name cannot be empty" }, { status: 400 });
+      }
+
+      const currentTable = await Table.findById(id).lean() as { name: string } | null;
+
+      // Only check for duplicate if the name actually changed
+      if (currentTable?.name !== name.trim()) {
+        const duplicate = await Table.findOne({ name: name.trim(), _id: { $ne: id } });
+        if (duplicate) {
+          return NextResponse.json(
+            { error: `A table named "${name.trim()}" already exists` },
+            { status: 409 }
+          );
+        }
+        updates.name = name.trim();
+      }
+    }
+
+    if (status !== undefined) {
+      if (!VALID_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { error: `Status must be one of: ${VALID_STATUSES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.status = status;
+    }
+
+    if (note !== undefined) {
+      updates.note = typeof note === "string" ? note.trim() : "";
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields provided to update" }, { status: 400 });
+    }
+
+    const updated = await Table.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(updated, { status: 200 });
+  } catch (err) {
+    console.error(`[PATCH /api/tables/${id}]`, err);
+    return NextResponse.json({ error: "Failed to update table" }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/tables/:id
+ * Permanently removes a table
+ */
+export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  const { id } = await params; // ✅ await params
+
+  if (!isValidId(id)) {
+    return NextResponse.json({ error: "Invalid table ID" }, { status: 400 });
+  }
+
+  try {
+    await connectDB();
+
+    const deleted = await Table.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Table not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(
+      { message: `Table "${deleted.name}" deleted successfully` },
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error(`[DELETE /api/tables/${id}]`, err);
+    return NextResponse.json({ error: "Failed to delete table" }, { status: 500 });
+  }
+}

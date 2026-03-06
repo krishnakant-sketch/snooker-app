@@ -1,0 +1,35 @@
+// app/api/tables/route.ts  (Next.js App Router)
+import { NextRequest, NextResponse } from "next/server";
+import connectDB from "../../Lib/Connectdb";
+import Table from "../../Models/Table";
+
+// GET all tables
+export async function GET() {
+  try {
+    await connectDB();
+    const tables = await Table.find().sort({ createdAt: 1 });
+    return NextResponse.json(tables);
+  } catch (err) {
+    console.error("GET /api/tables error:", err);
+    return NextResponse.json({ error: "Failed to fetch tables" }, { status: 500 });
+  }
+}
+
+// POST create new table
+export async function POST(req: NextRequest) {
+  try {
+    await connectDB();
+    const body = await req.json();
+    const { name, status, note } = body;
+
+    if (!name?.trim()) {
+      return NextResponse.json({ error: "Table name is required" }, { status: 400 });
+    }
+
+    const table = await Table.create({ name: name.trim(), status, note });
+    return NextResponse.json(table, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/tables error:", err);
+    return NextResponse.json({ error: "Failed to create table" }, { status: 500 });
+  }
+}
